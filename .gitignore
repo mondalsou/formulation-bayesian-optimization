@@ -2,6 +2,7 @@ PRD.md
 .claude/
 .cluade/
 .aidesigner/
+.streamlit/
 
 # Local/system noise
 .DS_Store
