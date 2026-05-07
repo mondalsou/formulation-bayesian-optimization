@@ -7,6 +7,16 @@ With interacting excipients and hard constraints (mass balance + bounds), naive 
 This project answers one core question:
 **How do we find good formulations faster, with fewer experiments, under realistic formulation constraints?**
 
+## What is Q45?
+`Q45` is the **percentage of drug dissolved at 45 minutes** (0-100%).  
+In general form:
+
+\[
+Q45 = 100 \times \frac{\text{drug dissolved at 45 min}}{\text{labeled drug amount}}
+\]
+
+In this repo, each experiment returns a Q45 value (from the synthetic simulator), and optimization aims to maximize that value under formulation constraints.
+
 ## Visual overview
 ### Optimization workflow
 ![Model-based DoE workflow](docs/assets/pipeline_overview.png)
@@ -21,26 +31,11 @@ This project answers one core question:
 ![BO progress animation](docs/assets/bo_progress.gif)
 
 ### Educational explainer (60-second animated overview)
-A self-contained animated explainer for chemists and formulation scientists with no ML background.
-Covers the full learn-and-improve loop in plain language across 7 scenes (problem → constraints → starter experiments → model learning → next best test → update & repeat → outcome).
+![BO explainer teaser](bo_teaser.gif)
 
-| File | Description |
-|---|---|
-| [`bo_explainer.mp4`](bo_explainer.mp4) | Full 60 s explainer · 1920×1080 · 30 fps · H.264 |
-| [`bo_teaser.gif`](bo_teaser.gif) | 30 s looping teaser (Scenes 4→5→6) · 960×540 · 10 fps |
-| [`animate_explainer.py`](animate_explainer.py) | Source script — re-render or customise any scene |
+<video src="bo_explainer.mp4" controls width="960"></video>
 
-Scene breakdown:
-
-| Scene | Time | Topic | On-screen label |
-|---|---|---|---|
-| 1 | 0–6 s | Problem: too many recipes, too few runs | — |
-| 2 | 6–13 s | Define ingredient ranges | "Feasible range" |
-| 3 | 13–20 s | Run a diverse starter set | "Starter experiments" |
-| 4 | 20–30 s | Fit prediction surface + uncertainty map | "What we expect" / "Where we are unsure" |
-| 5 | 30–40 s | Identify the next most informative run | "Next best test" |
-| 6 | 40–50 s | Run → update model → repeat | "Update and repeat" |
-| 7 | 50–60 s | Convergence result + final message | "Faster optimization with fewer trials" |
+Full video: [bo_explainer.mp4](bo_explainer.mp4)
 
 ## Our solution
 We use a **model-based DoE loop with Bayesian Optimization (BO)**:
