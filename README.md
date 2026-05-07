@@ -7,6 +7,12 @@ With interacting excipients and hard constraints (mass balance + bounds), naive 
 This project answers one core question:
 **How do we find good formulations faster, with fewer experiments, under realistic formulation constraints?**
 
+### Explainer (60-second animated overview)
+![BO explainer teaser](bo_teaser.gif)
+
+<video src="bo_explainer.mp4" controls width="960"></video>
+
+
 ## What is Q45?
 `Q45` is the **percentage of drug dissolved at 45 minutes** (0-100%).  
 In general form:
@@ -24,18 +30,6 @@ In this repo, each experiment returns a Q45 value (from the synthetic simulator)
 ### Headline benchmark result
 ![BO vs baseline convergence](docs/assets/benchmark_convergence.png)
 
-### Surrogate prediction and uncertainty (app-style view)
-![GP predicted Q45 and uncertainty](docs/assets/gp_heatmap_panel.png)
-
-### Optimization progress animation
-![BO progress animation](docs/assets/bo_progress.gif)
-
-### Educational explainer (60-second animated overview)
-![BO explainer teaser](bo_teaser.gif)
-
-<video src="bo_explainer.mp4" controls width="960"></video>
-
-Full video: [bo_explainer.mp4](bo_explainer.mp4)
 
 ## Our solution
 We use a **model-based DoE loop with Bayesian Optimization (BO)**:
@@ -69,11 +63,7 @@ In short: we replace blind search with uncertainty-aware sequential experimentat
 - `notebooks/03_comparison.ipynb`
 - Compares BO against random/grid/RSM-guided search under equal evaluation budget.
 
-### 4) Multi-objective extension
-- `notebooks/04_multiobj_bo.ipynb`
-- Extends to dissolution-hardness-friability trade-offs with Pareto analysis.
-
-### 5) Interactive app for scientists
+### 4) Interactive app for scientists
 - `app/streamlit_app.py`
 - Explore design space, run one-step BO suggestions, log experiments, view convergence, and compare strategies.
 
