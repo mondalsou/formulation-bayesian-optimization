@@ -22,6 +22,14 @@ Q45 = 100 \times \frac{\text{drug dissolved at 45 min}}{\text{labeled drug amoun
 
 In this repo, each experiment returns a Q45 value (from the synthetic simulator), and optimization aims to maximize that value under formulation constraints.
 
+## Project description 
+This repository implements a **model-based DoE and Bayesian optimization pipeline** for pharmaceutical formulation design.  
+Gaussian Process surrogate models guide sample-efficient exploration of constrained excipient space.
+
+- Single-objective BO: optimize `Q45` using GP + `EI`/`LogEI` style acquisition (notebooks + Streamlit app)
+- Multi-objective BO: optimize trade-offs among `Q45`, `hardness`, and `friability` using `qNEHVI` (Notebook 4)
+- Interactive Streamlit dashboard for design-space exploration, experiment logging, and convergence/strategy comparison
+
 ## Visual overview
 ### Optimization workflow
 ![Model-based DoE workflow](docs/assets/pipeline_overview.png)
@@ -62,7 +70,11 @@ In short: we replace blind search with uncertainty-aware sequential experimentat
 - `notebooks/03_comparison.ipynb`
 - Compares BO against random/grid/RSM-guided search under equal evaluation budget.
 
-### 4) Interactive app for scientists
+### 4) Multi-objective BO extension
+- `notebooks/04_multiobj_bo.ipynb`
+- Uses qNEHVI to jointly optimize dissolution (`Q45`), hardness, and friability via Pareto trade-offs.
+
+### 5) Interactive app for scientists
 - `app/streamlit_app.py`
 - Explore design space, run one-step BO suggestions, log experiments, view convergence, and compare strategies.
 
