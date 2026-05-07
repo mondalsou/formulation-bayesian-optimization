@@ -1,4 +1,4 @@
-# Formulation Bayesian Optimization
+# Bayesian Optimization for pharmaceutical tablet formulation
 
 ## Problem statement
 Tablet formulation development is expensive because each wet-lab experiment consumes time and material.  
@@ -19,6 +19,28 @@ This project answers one core question:
 
 ### Optimization progress animation
 ![BO progress animation](docs/assets/bo_progress.gif)
+
+### Educational explainer (60-second animated overview)
+A self-contained animated explainer for chemists and formulation scientists with no ML background.
+Covers the full learn-and-improve loop in plain language across 7 scenes (problem → constraints → starter experiments → model learning → next best test → update & repeat → outcome).
+
+| File | Description |
+|---|---|
+| [`bo_explainer.mp4`](bo_explainer.mp4) | Full 60 s explainer · 1920×1080 · 30 fps · H.264 |
+| [`bo_teaser.gif`](bo_teaser.gif) | 30 s looping teaser (Scenes 4→5→6) · 960×540 · 10 fps |
+| [`animate_explainer.py`](animate_explainer.py) | Source script — re-render or customise any scene |
+
+Scene breakdown:
+
+| Scene | Time | Topic | On-screen label |
+|---|---|---|---|
+| 1 | 0–6 s | Problem: too many recipes, too few runs | — |
+| 2 | 6–13 s | Define ingredient ranges | "Feasible range" |
+| 3 | 13–20 s | Run a diverse starter set | "Starter experiments" |
+| 4 | 20–30 s | Fit prediction surface + uncertainty map | "What we expect" / "Where we are unsure" |
+| 5 | 30–40 s | Identify the next most informative run | "Next best test" |
+| 6 | 40–50 s | Run → update model → repeat | "Update and repeat" |
+| 7 | 50–60 s | Convergence result + final message | "Faster optimization with fewer trials" |
 
 ## Our solution
 We use a **model-based DoE loop with Bayesian Optimization (BO)**:
