@@ -8,11 +8,9 @@ This project answers one core question:
 **How do we find good formulations faster, with fewer experiments, under realistic formulation constraints?**
 
 ### Explainer (60-second animated overview)
-![BO explainer teaser](bo_teaser.gif)
+[![Watch full explainer (MP4)](bo_teaser.gif)](./bo_explainer.mp4)
 
-<video src="bo_explainer.mp4" controls width="960"></video>
-
-![Full Video]("bo_explainer.mp4")
+Full video (MP4): [bo_explainer.mp4](./bo_explainer.mp4)
 
 ## What is Q45?
 `Q45` is the **percentage of drug dissolved at 45 minutes** (0-100%).  
