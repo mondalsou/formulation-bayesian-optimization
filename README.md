@@ -7,6 +7,19 @@ With interacting excipients and hard constraints (mass balance + bounds), naive 
 This project answers one core question:
 **How do we find good formulations faster, with fewer experiments, under realistic formulation constraints?**
 
+## Visual overview
+### Optimization workflow
+![Model-based DoE workflow](docs/assets/pipeline_overview.png)
+
+### Headline benchmark result
+![BO vs baseline convergence](docs/assets/benchmark_convergence.png)
+
+### Surrogate prediction and uncertainty (app-style view)
+![GP predicted Q45 and uncertainty](docs/assets/gp_heatmap_panel.png)
+
+### Optimization progress animation
+![BO progress animation](docs/assets/bo_progress.gif)
+
 ## Our solution
 We use a **model-based DoE loop with Bayesian Optimization (BO)**:
 1. Fit a probabilistic surrogate (Gaussian Process) on observed formulation outcomes.
