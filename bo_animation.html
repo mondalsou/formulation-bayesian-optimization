@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bayesian Optimization — Step by Step</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#cdd6f4;font-family:system-ui,sans-serif;padding:20px 16px 60px;min-height:100vh}
+h1{text-align:center;font-size:20px;font-weight:700;color:#89b4fa;margin-bottom:4px}
+.sub{text-align:center;font-size:12px;color:#6c7086;margin-bottom:20px}
+.layout{display:flex;gap:18px;max-width:1060px;margin:0 auto;flex-wrap:wrap}
+.left{flex:1;min-width:300px;min-width:0;overflow:hidden}
+.right{width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;min-width:0}
+canvas{display:block;border-radius:8px 8px 0 0;background:#161b2e;border:1px solid #313244;border-bottom:none;width:100%}
+
+/* Cards */
+.card{background:#1e1e2e;border:1px solid #313244;border-radius:10px;padding:14px 16px;overflow:hidden;min-width:0}
+.card-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#89b4fa;margin-bottom:5px}
+.card h2{font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:7px;line-height:1.35;word-wrap:break-word}
+.card p{font-size:12px;color:#a6adc8;line-height:1.6;word-wrap:break-word}
+.formula{background:#11111b;border-left:3px solid #89b4fa;border-radius:4px;padding:8px 10px;font-family:monospace;font-size:11px;color:#89dceb;margin:8px 0 2px;line-height:1.65;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;overflow:hidden}
+
+/* Progress */
+.sp-item{display:flex;align-items:center;gap:9px;font-size:12px;color:#585b70;padding:3px 0;transition:color .25s}
+.sp-item.active{color:#cdd6f4}
+.sp-item.done{color:#a6e3a1}
+.sp-dot{width:18px;height:18px;border-radius:50%;border:2px solid #313244;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;transition:all .25s}
+.sp-item.active .sp-dot{border-color:#89b4fa;background:#89b4fa;color:#000}
+.sp-item.done .sp-dot{border-color:#a6e3a1;background:#a6e3a1;color:#000}
+
+/* Stats row */
+.stats{display:flex;gap:10px}
+.stat-box{flex:1;background:#1e1e2e;border:1px solid #313244;border-radius:8px;padding:10px 12px;text-align:center}
+.stat-box .slabel{font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.stat-box .sval{font-size:22px;font-weight:700}
+.sval.iter{color:#f9e2af}
+.sval.best{color:#a6e3a1}
+
+/* Buttons */
+.btn-row{display:flex;gap:8px}
+.btn{flex:1;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-primary{background:#2563eb;color:#fff}
+.btn-primary:hover:not(:disabled){background:#1d4ed8}
+.btn-primary:disabled{background:#1e2a3a;color:#444;cursor:not-allowed}
+.btn-ghost{background:#1e1e2e;color:#89b4fa;border:1px solid #313244}
+.btn-ghost:hover{background:#252537}
+.btn-auto{background:#1e1e2e;color:#f9e2af;border:1px solid #313244}
+.btn-auto.running{background:#2a1f00;color:#f9e2af;border-color:#f9e2af66}
+
+/* Legend */
+.legend{display:flex;flex-wrap:wrap;gap:8px 12px;padding:8px 12px;background:#161b2e;border:1px solid #313244;border-radius:0 0 8px 8px;border-top:none;font-size:11px;color:#6c7086}
+.li{display:flex;align-items:center;gap:5px}
+.ldot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.lline{width:18px;height:3px;border-radius:1px;flex-shrink:0}
+
+@keyframes fadeSlide{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.fade-in{animation:fadeSlide .3s ease forwards}
+</style>
+</head>
+<body>
+
+<h1>Bayesian Optimization — Interactive Walkthrough</h1>
+<p class="sub">Step through every phase of the BO loop with live visualizations · 1D example</p>
+
+<div class="layout">
+
+  <!-- LEFT: canvas -->
+  <div class="left">
+    <canvas id="c" width="700" height="380"></canvas>
+    <div class="legend">
+      <div class="li"><div class="lline" style="background:rgba(255,255,255,.18);border-top:2px dashed #444"></div>True f(x) — hidden</div>
+      <div class="li"><div class="lline" style="background:#89b4fa"></div>GP mean μ(x)</div>
+      <div class="li"><div class="lline" style="background:rgba(137,180,250,.22);width:18px;height:9px;border-radius:3px"></div>95% CI ±2σ</div>
+      <div class="li"><div class="lline" style="background:#f9e2af"></div>EI acquisition α(x)</div>
+      <div class="li"><div class="ldot" style="background:#a6e3a1"></div>Observed pts</div>
+      <div class="li"><div class="ldot" style="background:#f38ba8"></div>Next x*</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: controls -->
+  <div class="right">
+
+    <div class="card" id="stepCard">
+      <div class="card-label">Current Phase</div>
+      <h2 id="stepTitle">Ready to Start</h2>
+      <p id="stepDesc">Press ▶ Initialize to begin. We will optimize an unknown 1D function — just like a real experiment — watching the GP and acquisition function update live.</p>
+      <div class="formula" id="stepFormula" style="display:none"></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-box"><div class="slabel">Iteration</div><div class="sval iter" id="iterVal">0</div></div>
+      <div class="stat-box"><div class="slabel">Best f(x)</div><div class="sval best" id="bestVal">—</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Loop Progress</div>
+      <div id="phases" style="display:flex;flex-direction:column;gap:5px;margin-top:4px">
+        <div class="sp-item" id="ph0"><div class="sp-dot">1</div>Initialize (Sobol)</div>
+        <div class="sp-item" id="ph1"><div class="sp-dot">2</div>Fit GP Surrogate</div>
+        <div class="sp-item" id="ph2"><div class="sp-dot">3</div>Compute EI α(x)</div>
+        <div class="sp-item" id="ph3"><div class="sp-dot">4</div>Find x* = argmax α</div>
+        <div class="sp-item" id="ph4"><div class="sp-dot">5</div>Evaluate f(x*)</div>
+        <div class="sp-item" id="ph5"><div class="sp-dot">6</div>Update → Repeat</div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnNext" onclick="advance()">▶ Initialize</button>
+      <button class="btn btn-ghost" onclick="resetAll()">↺</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-auto" id="btnAuto" onclick="toggleAuto()">⚡ Auto-Run</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+// TRUE FUNCTION  (unknown to optimizer)
+// ─────────────────────────────────────────
+function trueF(x) {
+  return 0.6*Math.sin(3.2*x) + 0.5*Math.sin(1.1*(x-0.3))
+       + 0.25*Math.cos(6*x) - 0.3*(x-0.6)*(x-0.6) + 0.15;
+}
+
+// ─────────────────────────────────────────
+// GAUSSIAN PROCESS  (exact, Matern-ish via RBF)
+// ─────────────────────────────────────────
+var ELL = 0.2, SF = 0.9;
+function kern(a, b) {
+  var d = (a-b)/ELL;
+  return SF*SF*Math.exp(-0.5*d*d);
+}
+function gpFit(xtr, ytr, xte, noise) {
+  var n = xtr.length, m = xte.length;
+  noise = noise || 0.025;
+  // K(X,X) + sigma^2 I
+  var K = [], i, j, k;
+  for (i=0;i<n;i++){K.push([]);for(j=0;j<n;j++)K[i].push(kern(xtr[i],xtr[j])+(i===j?noise*noise:0));}
+  var L = chol(K, n);
+  // alpha = K^-1 y
+  var al = cholSolve(L, ytr, n);
+  var mu=[], va=[];
+  for (i=0;i<m;i++){
+    var ks=[];
+    for(j=0;j<n;j++) ks.push(kern(xte[i],xtr[j]));
+    var mv=0; for(j=0;j<n;j++) mv+=ks[j]*al[j];
+    mu.push(mv);
+    var v=fwd(L,ks,n), vv=0; for(j=0;j<n;j++) vv+=v[j]*v[j];
+    va.push(Math.max(1e-9, kern(xte[i],xte[i])-vv));
+  }
+  return {mu:mu, va:va};
+}
+function chol(A,n){
+  var L=[];
+  for(var i=0;i<n;i++){L.push([]);for(var j=0;j<n;j++)L[i].push(0);}
+  for(var i=0;i<n;i++){
+    for(var j=0;j<=i;j++){
+      var s=A[i][j];
+      for(var k=0;k<j;k++) s-=L[i][k]*L[j][k];
+      L[i][j]=(i===j)?Math.sqrt(Math.max(s,1e-10)):s/L[j][j];
+    }
+  }
+  return L;
+}
+function fwd(L,b,n){
+  var x=[];
+  for(var i=0;i<n;i++){var s=b[i];for(var j=0;j<i;j++)s-=L[i][j]*x[j];x.push(s/L[i][i]);}
+  return x;
+}
+function bwd(L,b,n){
+  var x=new Array(n).fill(0);
+  for(var i=n-1;i>=0;i--){var s=b[i];for(var j=i+1;j<n;j++)s-=L[j][i]*x[j];x[i]=s/L[i][i];}
+  return x;
+}
+function cholSolve(L,b,n){ return bwd(L,fwd(L,b,n),n); }
+
+// ─────────────────────────────────────────
+// ACQUISITION — Expected Improvement
+// ─────────────────────────────────────────
+function normcdf(z){
+  var t=1/(1+0.2316419*Math.abs(z));
+  var d=0.3989423*Math.exp(-z*z/2);
+  var p=d*t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));
+  return z>0?1-p:p;
+}
+function normpdf(z){ return Math.exp(-z*z/2)/Math.sqrt(2*Math.PI); }
+function ei(mu, va, fBest) {
+  var out=[];
+  for(var i=0;i<mu.length;i++){
+    var s=Math.sqrt(va[i]);
+    if(s<1e-9){out.push(0);continue;}
+    var z=(mu[i]-fBest)/s;
+    out.push(Math.max(0,(mu[i]-fBest)*normcdf(z)+s*normpdf(z)));
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────
+// GRID
+// ─────────────────────────────────────────
+var NG = 250;
+var xg = [], yTrue = [];
+for(var i=0;i<NG;i++){
+  xg.push(i/(NG-1));
+  yTrue.push(trueF(i/(NG-1)));
+}
+
+// fixed init points (Sobol-ish spacing)
+var INIT_X = [0.07, 0.21, 0.37, 0.53, 0.68, 0.84];
+var rng = 42;
+function lcg(){ rng=(rng*1664525+1013904223)&0xffffffff; return (rng>>>0)/4294967296; }
+var INIT_Y = INIT_X.map(function(x){ return trueF(x)+(lcg()-0.5)*0.05; });
+
+// ─────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────
+var S = {
+  phase:-1, xObs:[], yObs:[], mu:null, va:null,
+  acq:null, xStar:null, yStar:null, iter:0, autoOn:false
+};
+
+// ─────────────────────────────────────────
+// CANVAS & DRAWING
+// ─────────────────────────────────────────
+var cv = document.getElementById('c');
+var ctx = cv.getContext('2d');
+var PL=52, PR=16, PT=28, PB=44;
+
+function resizeCanvas(){
+  var w = cv.parentElement ? cv.parentElement.clientWidth : 700;
+  w = Math.max(300, w);
+  cv.width  = w;
+  cv.height = Math.round(w * 0.50);
+  cv.style.width  = w + 'px';
+  cv.style.height = cv.height + 'px';
+  draw();
+}
+
+function mapX(x){ return PL + x*(cv.width-PL-PR); }
+function mapY(y, lo, hi){ return PT + (1-(y-lo)/(hi-lo))*(cv.height-PT-PB); }
+
+function draw(){
+  var W=cv.width, H=cv.height;
+  var YLO=-1.3, YHI=1.5;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#161b2e'; ctx.fillRect(0,0,W,H);
+
+  // grid
+  ctx.strokeStyle='#252537'; ctx.lineWidth=1;
+  [-1,-.5,0,.5,1].forEach(function(y){
+    var py=mapY(y,YLO,YHI);
+    ctx.beginPath();ctx.moveTo(PL,py);ctx.lineTo(W-PR,py);ctx.stroke();
+    ctx.fillStyle='#45475a';ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText(y.toFixed(1),PL-5,py+4);
+  });
+  [0,.2,.4,.6,.8,1].forEach(function(x){
+    var px=mapX(x);
+    ctx.beginPath();ctx.moveTo(px,PT);ctx.lineTo(px,H-PB);ctx.stroke();
+    ctx.fillStyle='#45475a';ctx.font='10px system-ui';ctx.textAlign='center';
+    ctx.fillText(x.toFixed(1),px,H-PB+14);
+  });
+
+  // axes labels
+  ctx.fillStyle='#6c7086';ctx.font='11px system-ui';
+  ctx.textAlign='center';
+  ctx.fillText('x  (normalized input)',W/2,H-5);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('f(x)',0,0);ctx.restore();
+
+  // acquisition strip (bottom 18% of plot area)
+  if(S.acq){
+    var amax=0; for(var i=0;i<S.acq.length;i++) if(S.acq[i]>amax) amax=S.acq[i];
+    if(amax>0){
+      var aH=(H-PT-PB)*0.18, aBase=H-PB, aTop=aBase-aH;
+      ctx.beginPath();
+      ctx.moveTo(mapX(xg[0]),aBase);
+      for(var i=0;i<NG;i++){
+        ctx.lineTo(mapX(xg[i]), aBase - (S.acq[i]/amax)*aH);
+      }
+      ctx.lineTo(mapX(xg[NG-1]),aBase);
+      ctx.closePath();
+      ctx.fillStyle='rgba(249,226,175,0.15)';ctx.fill();
+      ctx.beginPath();
+      for(var i=0;i<NG;i++){
+        var px=mapX(xg[i]), py=aBase-(S.acq[i]/amax)*aH;
+        i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+      }
+      ctx.strokeStyle='#f9e2af';ctx.lineWidth=1.8;ctx.stroke();
+      ctx.fillStyle='#f9e2af';ctx.font='bold 10px system-ui';ctx.textAlign='left';
+      ctx.fillText('α(x)=EI',PL+4,aTop+10);
+    }
+  }
+
+  // GP confidence band
+  if(S.mu){
+    ctx.beginPath();
+    for(var i=0;i<NG;i++){
+      var px=mapX(xg[i]), py=mapY(S.mu[i]+2*Math.sqrt(S.va[i]),YLO,YHI);
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    for(var i=NG-1;i>=0;i--){
+      ctx.lineTo(mapX(xg[i]),mapY(S.mu[i]-2*Math.sqrt(S.va[i]),YLO,YHI));
+    }
+    ctx.closePath();
+    ctx.fillStyle='rgba(137,180,250,0.13)';ctx.fill();
+    // GP mean
+    ctx.beginPath();
+    for(var i=0;i<NG;i++){
+      var px=mapX(xg[i]), py=mapY(S.mu[i],YLO,YHI);
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle='#89b4fa';ctx.lineWidth=2.2;ctx.setLineDash([]);ctx.stroke();
+  }
+
+  // true function (faint dashed — "the oracle")
+  if(S.phase>=0){
+    ctx.beginPath();
+    for(var i=0;i<NG;i++){
+      var px=mapX(xg[i]),py=mapY(yTrue[i],YLO,YHI);
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1.5;
+    ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='rgba(255,255,255,0.25)';ctx.font='10px system-ui';ctx.textAlign='left';
+    ctx.fillText('true f(x)  [oracle — normally hidden]',PL+4,PT+14);
+  }
+
+  // observed points
+  for(var i=0;i<S.xObs.length;i++){
+    var px=mapX(S.xObs[i]),py=mapY(S.yObs[i],YLO,YHI);
+    ctx.beginPath();ctx.arc(px,py,5.5,0,2*Math.PI);
+    ctx.fillStyle='#a6e3a1';ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+  }
+
+  // x* candidate
+  if(S.xStar!==null && S.phase>=3){
+    var px=mapX(S.xStar);
+    var muIdx=Math.round(S.xStar*(NG-1));
+    var py=mapY(S.mu?S.mu[muIdx]:0,YLO,YHI);
+    // vertical dashed
+    ctx.beginPath();ctx.setLineDash([4,4]);
+    ctx.moveTo(px,H-PB);ctx.lineTo(px,PT);
+    ctx.strokeStyle='rgba(243,139,168,0.7)';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.setLineDash([]);
+    // red dot
+    ctx.beginPath();ctx.arc(px,py,7,0,2*Math.PI);
+    ctx.fillStyle='#f38ba8';ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#f38ba8';ctx.font='bold 11px system-ui';ctx.textAlign='center';
+    ctx.fillText('x*',px,PT+20);
+  }
+
+  // evaluated point (phase 4)
+  if(S.phase===4 && S.xStar!==null && S.yStar!==null){
+    var px=mapX(S.xStar),py=mapY(S.yStar,YLO,YHI);
+    ctx.beginPath();ctx.arc(px,py,7,0,2*Math.PI);
+    ctx.fillStyle='#f9e2af';ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#f9e2af';ctx.font='bold 11px system-ui';ctx.textAlign='left';
+    ctx.fillText('y*',px+10,py-6);
+  }
+
+  // start screen
+  if(S.phase===-1){
+    ctx.fillStyle='rgba(13,17,23,0.65)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#89b4fa';ctx.font='bold 18px system-ui';ctx.textAlign='center';
+    ctx.fillText('Press  ▶ Initialize  to start',W/2,H/2-8);
+    ctx.fillStyle='#6c7086';ctx.font='13px system-ui';
+    ctx.fillText('1D black-box optimization — every BO step visualized',W/2,H/2+18);
+  }
+}
+
+// ─────────────────────────────────────────
+// UI HELPERS
+// ─────────────────────────────────────────
+var PHASES_INFO = [
+  {title:'Step 1 — Initialize (Sobol Sampling)',
+   desc:'We start with a small space-filling design. Sobol sequences spread points uniformly — far better than random. 6 initial experiments are run. These seed the GP with its first observations.',
+   formula:'X_init = Sobol(n=6, d=1)\nNo prior knowledge needed.\nEach point: run the actual experiment.'},
+  {title:'Step 2 — Fit the GP Surrogate',
+   desc:'A Gaussian Process is fitted to the observed (x, y) data. The blue curve is the posterior mean μ(x). The blue band is ±2σ — the 95% confidence interval. Wide = uncertain; narrow = confident.',
+   formula:'f(x) ~ GP(μ(x), k(x,x\'))\nKernel: RBF / Matern 5/2\nHyperparams fit by max MLL'},
+  {title:'Step 3 — Compute Expected Improvement α(x)',
+   desc:'The EI acquisition function scores every candidate x. A point with high mean OR high uncertainty can get high EI. The yellow curve shows EI across the whole input space.',
+   formula:'EI(x) = E[max(f(x)−f*, 0)]\n     = (μ−f*)Φ(z) + σφ(z)\n  z  = (μ−f*)/σ,  f*=current best'},
+  {title:'Step 4 — Find x* = argmax α(x)',
+   desc:'We pick the input x* that maximizes EI. The red marker shows x* — the next experiment the optimizer recommends. Notice it balances between unexplored regions and the current best.',
+   formula:'x* = argmax  EI(x)\nSolve via L-BFGS-B on the GP,\nnot the true function (cheap!).'},
+  {title:'Step 5 — Evaluate f(x*) — Run the Experiment',
+   desc:'Now we query the true function at x*. In real use this is the lab assay, simulation, or clinical test. The yellow dot shows the true noisy observation y*. This is added to our dataset.',
+   formula:'y* = f(x*) + ε,  ε~N(0,σ²)\nAdd (x*, y*) to history D.\nThis is the only expensive step.'},
+  {title:'Step 6 — Update GP → Next Iteration',
+   desc:'The new point is absorbed into the GP training set. Uncertainty shrinks near x*. The acquisition function shifts to the next most promising region. We loop back to Step 2.',
+   formula:'D ← D ∪ {(x*, y*)}\nRe-fit GP  →  back to Step 2\nRepeat until budget exhausted.'}
+];
+
+function setPhaseUI(ph, overrideTitle, overrideDesc) {
+  var info = PHASES_INFO[ph] || PHASES_INFO[0];
+  var title = overrideTitle || info.title;
+  var desc  = overrideDesc  || info.desc;
+  document.getElementById('stepTitle').textContent = title;
+  document.getElementById('stepDesc').textContent  = desc;
+  var fel = document.getElementById('stepFormula');
+  fel.textContent = info.formula;
+  fel.style.display = 'block';
+  // animate
+  var card = document.getElementById('stepCard');
+  card.classList.remove('fade-in');
+  void card.offsetWidth;
+  card.classList.add('fade-in');
+  // progress dots
+  for(var i=0;i<6;i++){
+    var el=document.getElementById('ph'+i);
+    el.classList.remove('active','done');
+    if(i<ph) el.classList.add('done');
+    else if(i===ph) el.classList.add('active');
+  }
+}
+
+function updateStats(){
+  document.getElementById('iterVal').textContent = S.iter;
+  if(S.yObs.length>0){
+    var best=-Infinity;
+    S.yObs.forEach(function(v){ if(v>best) best=v; });
+    document.getElementById('bestVal').textContent = best.toFixed(3);
+  }
+}
+
+// ─────────────────────────────────────────
+// ADVANCE — the main state machine
+// ─────────────────────────────────────────
+function advance(){
+  if(S.phase===-1){
+    // Phase 0: init
+    S.xObs = INIT_X.slice();
+    S.yObs = INIT_Y.slice();
+    S.phase = 0;
+    S.mu=null; S.va=null; S.acq=null; S.xStar=null; S.yStar=null;
+    setPhaseUI(0);
+    document.getElementById('btnNext').textContent='▶ Fit GP';
+    updateStats(); draw(); return;
+  }
+
+  if(S.phase===0){
+    // Phase 1: fit GP
+    var gp = gpFit(S.xObs, S.yObs, xg);
+    S.mu=gp.mu; S.va=gp.va;
+    S.acq=null; S.xStar=null;
+    S.phase=1;
+    setPhaseUI(1);
+    document.getElementById('btnNext').textContent='▶ Compute EI';
+    draw(); return;
+  }
+
+  if(S.phase===1){
+    // Phase 2: compute EI
+    var fBest=-Infinity;
+    S.yObs.forEach(function(v){ if(v>fBest) fBest=v; });
+    S.acq = ei(S.mu, S.va, fBest);
+    S.xStar=null;
+    S.phase=2;
+    setPhaseUI(2);
+    document.getElementById('btnNext').textContent='▶ Find x*';
+    draw(); return;
+  }
+
+  if(S.phase===2){
+    // Phase 3: find argmax
+    var best=-Infinity, bIdx=0;
+    for(var i=0;i<S.acq.length;i++) if(S.acq[i]>best){best=S.acq[i];bIdx=i;}
+    S.xStar = xg[bIdx];
+    S.phase=3;
+    setPhaseUI(3);
+    document.getElementById('btnNext').textContent='▶ Evaluate f(x*)';
+    draw(); return;
+  }
+
+  if(S.phase===3){
+    // Phase 4: evaluate
+    S.yStar = trueF(S.xStar) + (lcg()-0.5)*0.05;
+    S.phase=4;
+    setPhaseUI(4);
+    document.getElementById('btnNext').textContent='▶ Update & Loop';
+    draw(); return;
+  }
+
+  if(S.phase===4){
+    // Phase 5: update
+    S.xObs.push(S.xStar);
+    S.yObs.push(S.yStar);
+    S.iter++;
+    var gp2 = gpFit(S.xObs, S.yObs, xg);
+    S.mu=gp2.mu; S.va=gp2.va;
+    S.xStar=null; S.yStar=null; S.acq=null;
+    S.phase=5;
+    setPhaseUI(5);
+    document.getElementById('btnNext').textContent='▶ Next Iteration';
+    updateStats(); draw();
+    setTimeout(function(){
+      S.phase=1;
+      document.getElementById('btnNext').textContent='▶ Compute EI';
+      setPhaseUI(1,'Ready for Iteration '+(S.iter+1),
+        'GP updated — uncertainty has shrunk near the last x*. Click Compute EI to plan the next experiment.');
+    },700);
+    return;
+  }
+
+  if(S.phase===5 || S.phase===1){
+    // Shortcut: go straight to EI computation
+    S.phase=0; S.phase=1;
+    var fBest2=-Infinity;
+    S.yObs.forEach(function(v){ if(v>fBest2) fBest2=v; });
+    S.acq = ei(S.mu, S.va, fBest2);
+    S.xStar=null;
+    S.phase=2;
+    setPhaseUI(2);
+    document.getElementById('btnNext').textContent='▶ Find x*';
+    draw();
+  }
+}
+
+// ─────────────────────────────────────────
+// RESET
+// ─────────────────────────────────────────
+function resetAll(){
+  clearInterval(autoTimer); autoTimer=null;
+  S={phase:-1,xObs:[],yObs:[],mu:null,va:null,acq:null,xStar:null,yStar:null,iter:0,autoOn:false};
+  rng=42; // reset RNG for reproducibility
+  document.getElementById('btnNext').textContent='▶ Initialize';
+  document.getElementById('btnAuto').textContent='⚡ Auto-Run';
+  document.getElementById('btnAuto').classList.remove('running');
+  document.getElementById('iterVal').textContent='0';
+  document.getElementById('bestVal').textContent='—';
+  document.getElementById('stepTitle').textContent='Ready to Start';
+  document.getElementById('stepDesc').textContent='Press ▶ Initialize to begin. We will optimize an unknown 1D function watching the GP and acquisition function update live.';
+  document.getElementById('stepFormula').style.display='none';
+  for(var i=0;i<6;i++){
+    var el=document.getElementById('ph'+i);
+    el.classList.remove('active','done');
+  }
+  draw();
+}
+
+// ─────────────────────────────────────────
+// AUTO-RUN
+// ─────────────────────────────────────────
+var autoTimer=null;
+var AUTO_DELAYS=[800,600,600,800,900,400]; // ms per phase
+
+function toggleAuto(){
+  S.autoOn = !S.autoOn;
+  var btn = document.getElementById('btnAuto');
+  if(S.autoOn){
+    btn.textContent='⏸ Pause';
+    btn.classList.add('running');
+    runNextAuto();
+  } else {
+    btn.textContent='⚡ Auto-Run';
+    btn.classList.remove('running');
+    clearTimeout(autoTimer); autoTimer=null;
+  }
+}
+
+function runNextAuto(){
+  if(!S.autoOn) return;
+  if(S.iter>=18){
+    S.autoOn=false;
+    document.getElementById('btnAuto').textContent='⚡ Done (18 iters)';
+    document.getElementById('btnAuto').classList.remove('running');
+    return;
+  }
+  advance();
+  var phase = S.phase>=0 ? S.phase : 0;
+  var delay = AUTO_DELAYS[phase] || 600;
+  autoTimer = setTimeout(runNextAuto, delay);
+}
+
+// ─────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────
+window.addEventListener('resize', function(){
+  clearTimeout(window._rzt);
+  window._rzt = setTimeout(resizeCanvas, 120);
+});
+
+window.addEventListener('DOMContentLoaded', function(){
+  resizeCanvas();
+});
+
+// fallback if DOMContentLoaded already fired
+if(document.readyState==='complete'||document.readyState==='interactive'){
+  resizeCanvas();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+PRD.md
+.claude/
+.cluade/
+.aidesigner/
+
+# Local/system noise
+.DS_Store
+__pycache__/
+.ipynb_checkpoints/

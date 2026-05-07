@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bayesian Optimization — Study Notes</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Caveat+Brush&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #fdf8f0;
+    --ruled: #c9d8e8;
+    --margin: #e8b4b4;
+    --ink: #1a1a2e;
+    --blue-ink: #1b3a6b;
+    --red-ink: #b5291c;
+    --green-ink: #1a5c2a;
+    --pencil: #6b5c4a;
+    --highlight-y: rgba(255, 235, 59, 0.45);
+    --highlight-g: rgba(130, 220, 140, 0.38);
+    --highlight-p: rgba(186, 149, 226, 0.38);
+    --box-bg: rgba(200, 225, 255, 0.3);
+    --box-border: #7aaad8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #d4c5a9;
+    font-family: 'Patrick Hand', cursive;
+    padding: 30px 20px 60px;
+    min-height: 100vh;
+  }
+
+  .notebook {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  .page {
+    background: var(--paper);
+    border-radius: 3px;
+    box-shadow: 3px 4px 18px rgba(0,0,0,0.22), 1px 1px 4px rgba(0,0,0,0.1);
+    margin-bottom: 36px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Ruled lines */
+  .page::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 31px,
+      var(--ruled) 31px,
+      var(--ruled) 32px
+    );
+    background-position: 0 58px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Red margin line */
+  .page::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 72px;
+    width: 1.5px;
+    background: var(--margin);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .page-content {
+    position: relative;
+    z-index: 2;
+    padding: 18px 42px 36px 90px;
+  }
+
+  /* Page header strip */
+  .page-header {
+    background: linear-gradient(135deg, #2c3e7a 0%, #1a2a5e 100%);
+    padding: 14px 24px 14px 90px;
+    position: relative;
+    z-index: 3;
+    margin-bottom: 0;
+  }
+  .page-header h1 {
+    font-family: 'Caveat Brush', cursive;
+    color: #fff;
+    font-size: 28px;
+    letter-spacing: 1px;
+  }
+  .page-header .subtitle {
+    font-family: 'Patrick Hand', cursive;
+    color: rgba(255,255,255,0.75);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+
+  /* Section headings */
+  h2 {
+    font-family: 'Caveat Brush', cursive;
+    color: var(--blue-ink);
+    font-size: 22px;
+    margin: 28px 0 6px -12px;
+    border-bottom: 2.5px solid var(--blue-ink);
+    padding-bottom: 2px;
+    display: inline-block;
+  }
+
+  h3 {
+    font-family: 'Caveat', cursive;
+    font-weight: 700;
+    color: var(--red-ink);
+    font-size: 17px;
+    margin: 18px 0 4px;
+  }
+
+  h4 {
+    font-family: 'Caveat', cursive;
+    font-weight: 600;
+    color: var(--green-ink);
+    font-size: 15px;
+    margin: 12px 0 2px;
+  }
+
+  p, li {
+    font-family: 'Patrick Hand', cursive;
+    font-size: 15px;
+    color: var(--ink);
+    line-height: 32px;
+  }
+
+  ul { list-style: none; padding-left: 0; }
+  ul li::before { content: "→ "; color: var(--blue-ink); font-weight: bold; }
+  ol { padding-left: 22px; }
+  ol li { line-height: 32px; }
+
+  /* Highlight spans */
+  .hl-y  { background: var(--highlight-y);  border-radius: 2px; padding: 0 2px; }
+  .hl-g  { background: var(--highlight-g);  border-radius: 2px; padding: 0 2px; }
+  .hl-p  { background: var(--highlight-p);  border-radius: 2px; padding: 0 2px; }
+
+  /* Ink colors */
+  .blue  { color: var(--blue-ink); }
+  .red   { color: var(--red-ink); }
+  .green { color: var(--green-ink); }
+  .pencil{ color: var(--pencil); font-size: 13px; }
+
+  /* Callout box */
+  .callout {
+    background: var(--box-bg);
+    border-left: 4px solid var(--box-border);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 16px;
+    margin: 14px 0;
+    font-family: 'Patrick Hand', cursive;
+    font-size: 14.5px;
+    line-height: 26px;
+    color: var(--blue-ink);
+  }
+
+  /* Warning / key insight box */
+  .insight {
+    background: rgba(255, 235, 59, 0.18);
+    border: 1.5px dashed #c8a800;
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin: 14px 0;
+    font-size: 14.5px;
+    line-height: 26px;
+  }
+
+  /* Red alert box */
+  .alert {
+    background: rgba(255, 180, 160, 0.18);
+    border-left: 4px solid var(--red-ink);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 16px;
+    margin: 14px 0;
+    font-size: 14.5px;
+    line-height: 26px;
+    color: #8b1a0e;
+  }
+
+  /* Code / formula blocks */
+  .formula {
+    font-family: 'Caveat', cursive;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--blue-ink);
+    background: rgba(200,220,255,0.25);
+    border: 1px solid #b0c8e8;
+    border-radius: 6px;
+    padding: 8px 16px;
+    margin: 10px 0;
+    display: block;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  /* Diagram / table areas */
+  .diagram-area {
+    background: rgba(255,255,255,0.7);
+    border: 1.5px solid #c0c8d8;
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 14px 0;
+    font-size: 14px;
+    line-height: 24px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Patrick Hand', cursive;
+    font-size: 13.5px;
+    margin: 10px 0;
+  }
+  th {
+    background: rgba(40,70,150,0.12);
+    color: var(--blue-ink);
+    font-family: 'Caveat', cursive;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 6px 10px;
+    border: 1px solid #b0bdd8;
+    text-align: left;
+  }
+  td {
+    padding: 5px 10px;
+    border: 1px solid #c8d0de;
+    vertical-align: top;
+    line-height: 22px;
+  }
+  tr:nth-child(even) td { background: rgba(200,220,255,0.12); }
+
+  /* Step-by-step loop */
+  .loop-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin: 10px 0;
+  }
+  .step-num {
+    font-family: 'Caveat Brush', cursive;
+    font-size: 20px;
+    color: #fff;
+    background: var(--blue-ink);
+    border-radius: 50%;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .step-body { flex: 1; }
+  .step-body strong { font-family: 'Caveat', cursive; font-size: 16px; color: var(--red-ink); }
+
+  /* Horizontal divider */
+  .divider {
+    border: none;
+    border-top: 1.5px dashed #b0bdd8;
+    margin: 20px 0;
+  }
+
+  /* Sticky note style */
+  .sticky {
+    background: #fffde7;
+    border: 1px solid #f9c800;
+    border-radius: 3px;
+    padding: 10px 14px;
+    margin: 14px 0 14px auto;
+    max-width: 260px;
+    font-family: 'Caveat', cursive;
+    font-size: 14px;
+    color: #5a4a00;
+    box-shadow: 2px 3px 8px rgba(0,0,0,0.12);
+    transform: rotate(1.5deg);
+    line-height: 22px;
+  }
+
+  .sticky-left {
+    float: left;
+    margin: 14px 18px 10px -20px;
+    transform: rotate(-1.8deg);
+    max-width: 200px;
+  }
+
+  /* Pareto diagram */
+  .pareto-svg { display: block; margin: 0 auto; }
+
+  /* Acquisition comparison strip */
+  .acq-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 12px 0;
+  }
+  .acq-card {
+    background: rgba(255,255,255,0.7);
+    border: 1.5px solid #c0c8d8;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    line-height: 23px;
+  }
+  .acq-card .acq-name {
+    font-family: 'Caveat Brush', cursive;
+    font-size: 16px;
+    color: var(--blue-ink);
+    border-bottom: 1.5px solid #c0c8d8;
+    margin-bottom: 6px;
+    padding-bottom: 3px;
+  }
+
+  .clearfix::after { content: ''; display: table; clear: both; }
+
+  /* Page number */
+  .page-num {
+    position: absolute;
+    bottom: 10px;
+    right: 20px;
+    font-family: 'Caveat', cursive;
+    font-size: 13px;
+    color: #b0a080;
+    z-index: 3;
+  }
+
+  /* Corner fold */
+  .corner-fold {
+    position: absolute;
+    top: 0; right: 0;
+    width: 0; height: 0;
+    border-style: solid;
+    border-width: 0 28px 28px 0;
+    border-color: transparent #d4c5a9 transparent transparent;
+    z-index: 10;
+  }
+
+  /* Molecule box */
+  .molecule-row {
+    display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap;
+  }
+  .mol-card {
+    background: rgba(200,240,210,0.3);
+    border: 1.5px solid #5aaa70;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    line-height: 22px;
+    flex: 1; min-width: 180px;
+  }
+  .mol-card .mol-name {
+    font-family: 'Caveat Brush', cursive;
+    font-size: 15px;
+    color: var(--green-ink);
+  }
+  .mol-card .mol-rank {
+    font-family: 'Caveat', cursive;
+    font-weight: 700;
+    font-size: 18px;
+    float: right;
+    color: var(--red-ink);
+  }
+
+  /* BO vs random comparison visual */
+  .compare-bar {
+    display: flex; align-items: center; gap: 10px; margin: 5px 0;
+    font-size: 13.5px;
+  }
+  .bar-label { width: 130px; flex-shrink: 0; }
+  .bar-track {
+    flex: 1; height: 18px; background: #e8e8e8;
+    border-radius: 9px; overflow: hidden; position: relative;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 9px;
+    display: flex; align-items: center; padding-left: 8px;
+    font-size: 11px; color: #fff; font-family: 'Caveat', cursive; font-weight: 700;
+  }
+
+  @media (max-width: 600px) {
+    .page-content { padding: 14px 16px 28px 78px; }
+    .acq-grid { grid-template-columns: 1fr; }
+    .molecule-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="notebook">
+
+<!-- ═══════════════════════════════════════════════════════
+     PAGE 1 — Big Picture & Core Loop
+═══════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="corner-fold"></div>
+  <div class="page-header">
+    <h1>Bayesian Optimization — Study Notes</h1>
+    <div class="subtitle">Algorithms · Intuition · Applied Examples · Practical Workflow</div>
+  </div>
+  <div class="page-content">
+
+    <h2>1. What is Bayesian Optimization?</h2>
+
+    <p>BO is a strategy for finding the <span class="hl-y">maximum (or minimum) of an expensive black-box function</span> using as few evaluations as possible. "Expensive" means each evaluation costs real time, money, or both — a wet-lab experiment, a clinical test, a long simulation.</p>
+
+    <div class="sticky">
+      Key idea: instead of blindly testing points, <em>build a model of the function</em> and use that model to decide where to look next.
+    </div>
+
+    <p class="clearfix">Contrast with:</p>
+    <ul>
+      <li><strong>Grid search</strong> — exhaustive, wasteful at high dimensions</li>
+      <li><strong>Random search</strong> — no memory, no learning</li>
+      <li><strong>Classical DoE (RSM)</strong> — assumes linear / quadratic relationships; breaks on nonlinear responses</li>
+      <li><span class="hl-g"><strong>BO</strong> — learns from every observation; balances exploration vs exploitation</span></li>
+    </ul>
+
+    <hr class="divider">
+
+    <h2>2. The BO Loop — Step by Step</h2>
+
+    <div class="loop-step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <strong>Initialize</strong> — run a small space-filling design (Sobol / Latin Hypercube). These are your "pilot" experiments. Typically 5–15 points depending on dimensionality.
+      </div>
+    </div>
+    <div class="loop-step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <strong>Fit surrogate</strong> — train a Gaussian Process (GP) on all observed (x, y) pairs. The GP gives you a <span class="hl-y">predicted mean μ(x) and uncertainty σ(x)</span> everywhere in the space.
+      </div>
+    </div>
+    <div class="loop-step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <strong>Optimize acquisition function</strong> — α(x) is a cheap-to-evaluate function that uses μ(x) and σ(x) to score candidate points. Find x* = argmax α(x).
+      </div>
+    </div>
+    <div class="loop-step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <strong>Evaluate the true function</strong> at x*. Run the actual experiment / simulation.
+      </div>
+    </div>
+    <div class="loop-step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <strong>Update</strong> — add (x*, y*) to the dataset. Go back to step 2. Repeat until budget is exhausted.
+      </div>
+    </div>
+
+    <div class="diagram-area">
+      <pre style="font-family:'Caveat',cursive; font-size:14px; line-height:26px; color:var(--blue-ink);">
+ Initial data (Sobol)
+        │
+        ▼
+  ┌───────────────┐
+  │  Fit GP model │◄──────────────────────────┐
+  └───────┬───────┘                            │
+          │ μ(x), σ(x)                         │
+          ▼                                    │
+  ┌───────────────────┐                        │
+  │ Optimize acq α(x) │                        │
+  └───────┬───────────┘                        │
+          │ x* (best candidate)                │
+          ▼                                    │
+  ┌───────────────────────┐                    │
+  │ Run experiment → y*   │                    │
+  └───────┬───────────────┘                    │
+          │                                    │
+          └── add (x*, y*) to data ────────────┘
+                     (until budget = 0)
+</pre>
+    </div>
+
+    <div class="callout">
+      <span class="blue">Key insight:</span> The GP acts as a "memory" — it uses ALL past observations simultaneously to build a global picture of the function. Each new point refines this picture.
+    </div>
+
+  </div>
+  <div class="page-num">1</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     PAGE 2 — Gaussian Process Surrogate
+═══════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="corner-fold"></div>
+  <div class="page-content">
+
+    <h2>3. Gaussian Process (GP) Surrogate</h2>
+
+    <p>A GP is a <span class="hl-y">distribution over functions</span>. Instead of fitting one curve, it fits infinitely many, weighted by how well they fit the data.</p>
+
+    <span class="formula">f(x) ~ GP( μ₀(x),  k(x, x') )</span>
+
+    <p><span class="blue">μ₀(x)</span> — prior mean (often set to 0 or a constant).<br>
+    <span class="blue">k(x, x')</span> — kernel / covariance function. Encodes smoothness assumptions.</p>
+
+    <h3>After observing data D = {(xᵢ, yᵢ)}:</h3>
+    <span class="formula">Posterior mean:  μₙ(x) = k(x, X)[K(X,X) + σ²ₙI]⁻¹ y<br>
+    Posterior variance: σ²ₙ(x) = k(x,x) − k(x,X)[K(X,X) + σ²ₙI]⁻¹ k(X,x)</span>
+
+    <div class="insight">
+      ★ What this means intuitively: near observed points → σ²(x) collapses to 0 (we're confident). Far from data → σ²(x) is large (we're uncertain). BO exploits this!
+    </div>
+
+    <h3>Common Kernels</h3>
+    <table>
+      <tr><th>Kernel</th><th>Assumption</th><th>When to use</th></tr>
+      <tr><td><strong>RBF / Squared Exponential</strong></td><td>Infinitely differentiable (very smooth)</td><td>Overly smooth for most real responses — rarely best</td></tr>
+      <tr><td><strong>Matérn 5/2</strong> ⭐</td><td>Twice differentiable — realistic roughness</td><td>Default for most scientific optimization problems</td></tr>
+      <tr><td><strong>Matérn 3/2</strong></td><td>Once differentiable</td><td>Rougher/noisier responses</td></tr>
+      <tr><td><strong>Linear</strong></td><td>Linear trends only</td><td>Only if you know the response is linear</td></tr>
+    </table>
+
+    <div class="sticky" style="max-width:220px;">
+      BoTorch's <em>SingleTaskGP</em> defaults to Matérn 5/2. Almost always the right choice.
+    </div>
+
+    <h3 class="clearfix">Hyperparameters — how does the GP set them?</h3>
+    <p>The kernel has hyperparameters: <span class="hl-y">lengthscale ℓ</span> (how quickly function varies) and <span class="hl-y">output scale σ_f</span>. These are optimized by maximizing the <strong>marginal log-likelihood (MLL)</strong> of the data. BoTorch does this automatically with <code>fit_gpytorch_mll()</code>.</p>
+
+    <hr class="divider">
+
+    <h2>4. Acquisition Functions — Deciding WHERE to Sample Next</h2>
+
+    <p>The acquisition function α(x) takes the GP posterior and returns a score for each candidate x. We pick x* = argmax α(x) as the next experiment.</p>
+
+    <div class="acq-grid">
+      <div class="acq-card">
+        <div class="acq-name">Expected Improvement (EI)</div>
+        <span class="formula" style="font-size:13px;">EI(x) = E[max(f(x) − f*, 0)]</span>
+        <p>f* = current best observed value.<br>
+        Balances exploration & exploitation automatically.<br>
+        <span class="hl-g">Most widely used. Great default.</span></p>
+      </div>
+      <div class="acq-card">
+        <div class="acq-name">Log EI (LogEI) ⭐</div>
+        <span class="formula" style="font-size:13px;">LogEI(x) = log EI(x)</span>
+        <p>Numerically stable version — avoids underflow when EI values are tiny.<br>
+        <span class="hl-g">Use this instead of EI in practice (BoTorch default).</span></p>
+      </div>
+      <div class="acq-card">
+        <div class="acq-name">Upper Confidence Bound (UCB)</div>
+        <span class="formula" style="font-size:13px;">UCB(x) = μ(x) + β·σ(x)</span>
+        <p>β controls exploration vs exploitation.<br>
+        β small → exploit (trust mean). β large → explore (seek uncertainty).<br>
+        <span class="pencil">More interpretable but requires β tuning.</span></p>
+      </div>
+      <div class="acq-card">
+        <div class="acq-name">Probability of Improvement (PI)</div>
+        <span class="formula" style="font-size:13px;">PI(x) = P(f(x) > f* + ε)</span>
+        <p>ε > 0 ensures exploration isn't zero.<br>
+        Greedy — tends to exploit too early.<br>
+        <span class="pencil">Less popular than EI. Use only with strong prior.</span></p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <span class="blue">The exploration–exploitation tradeoff:</span><br>
+      — <strong>Exploration</strong> = sample where σ(x) is large (go into the unknown)<br>
+      — <strong>Exploitation</strong> = sample where μ(x) is already high (refine near the known best)<br>
+      EI/LogEI automatically balances both — that's why it's so robust.
+    </div>
+
+  </div>
+  <div class="page-num">2</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     PAGE 3 — Sobol Init + Single-Objective BO: PK Example
+═══════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="corner-fold"></div>
+  <div class="page-content">
+
+    <h2>5. Initialization — Sobol vs Random</h2>
+
+    <p>Before BO starts, we need a few "cold-start" observations. The quality of initialization matters — a good spread reduces the risk of the GP being confidently wrong in unexplored regions.</p>
+
+    <div class="diagram-area">
+      <pre style="font-family:'Caveat',cursive; font-size:13.5px; line-height:24px; color:var(--ink);">
+  Random sampling          Sobol (quasi-random)        Latin Hypercube
+  ─────────────────        ────────────────────        ─────────────────
+  ·  ·   ·                  ·   ·   ·   ·              ·             ·
+          · ·               ·   ·   ·   ·                  ·   ·
+  ·  ·                      ·   ·   ·   ·              ·         ·
+       ·   · ·              ·   ·   ·   ·                  ·   ·
+  ·                         ·   ·   ·   ·              ·             ·
+  (clumped, gaps)          (evenly spaced, fills      (each row/col
+                            space efficiently)         has one point)
+</pre>
+    </div>
+
+    <div class="insight">
+      ★ Sobol sequences are <strong>quasi-random</strong> — they fill the space far more uniformly than pure random sampling. Use <code>SobolEngine</code> in PyTorch or BoTorch's built-in sampler. The gains are most visible in 4+ dimensions.
+    </div>
+
+    <hr class="divider">
+
+    <h2>6. Applied Example #1 — Single-Objective BO</h2>
+    <h3>Problem: PK Database Screening → Find Top 3 Molecules</h3>
+
+    <p class="pencil">Context: You have a database of 800 candidate drug-like molecules, each with 6 computed molecular descriptors. Running a full pharmacokinetic (PK) assay on each is expensive — costs ~$2,000/compound and 5 days per batch. Goal: use BO to intelligently query the database and identify the <span class="hl-y">top 3 compounds by oral bioavailability (F%)</span> within a budget of 40 assays.</p>
+
+    <h4>Setup</h4>
+    <table>
+      <tr><th>Input feature</th><th>Symbol</th><th>Range</th><th>Scientific meaning</th></tr>
+      <tr><td>Molecular Weight</td><td>MW</td><td>150–600 Da</td><td>Absorption / permeability proxy</td></tr>
+      <tr><td>Lipophilicity</td><td>logP</td><td>−1 to +5</td><td>Membrane permeability</td></tr>
+      <tr><td>H-bond donors</td><td>HBD</td><td>0–5</td><td>Lipid bilayer crossing cost</td></tr>
+      <tr><td>H-bond acceptors</td><td>HBA</td><td>0–10</td><td>Aqueous solubility driver</td></tr>
+      <tr><td>Topological PSA</td><td>TPSA</td><td>20–160 Å²</td><td>GI permeability predictor</td></tr>
+      <tr><td>Rotatable bonds</td><td>nRotB</td><td>0–12</td><td>Conformational entropy / absorption</td></tr>
+    </table>
+
+    <p><span class="blue">Objective:</span> Maximize <span class="hl-g">F% (oral bioavailability)</span> — expensive to measure in vivo.</p>
+    <p><span class="blue">Constraint:</span> Lipinski rule-of-5 space (MW ≤ 500, logP ≤ 5, HBD ≤ 5, HBA ≤ 10)</p>
+
+    <h4>How BO works here</h4>
+    <ol>
+      <li><strong>Initialize:</strong> Pick 10 molecules via Sobol from the descriptor space → run PK assays → record F%</li>
+      <li><strong>Fit GP:</strong> Train SingleTaskGP on (descriptor vector, F%) pairs</li>
+      <li><strong>Acquire:</strong> LogEI identifies which of the remaining 790 compounds has highest expected F% improvement</li>
+      <li><strong>Assay:</strong> Run assay on suggested compound → add result</li>
+      <li><strong>Repeat</strong> for 30 more iterations (total 40 assays used)</li>
+    </ol>
+
+    <h4>Results after 40 assays</h4>
+    <div class="molecule-row">
+      <div class="mol-card">
+        <span class="mol-rank">#1</span>
+        <div class="mol-name">Cpd-0471</div>
+        MW=342, logP=2.1, TPSA=68<br>
+        <strong style="color:var(--green-ink);">F% = 84 ± 4%</strong><br>
+        <span class="pencil">Found at iteration 18</span>
+      </div>
+      <div class="mol-card">
+        <span class="mol-rank">#2</span>
+        <div class="mol-name">Cpd-0229</div>
+        MW=298, logP=1.7, TPSA=72<br>
+        <strong style="color:var(--green-ink);">F% = 79 ± 5%</strong><br>
+        <span class="pencil">Found at iteration 25</span>
+      </div>
+      <div class="mol-card">
+        <span class="mol-rank">#3</span>
+        <div class="mol-name">Cpd-0614</div>
+        MW=415, logP=3.2, TPSA=55<br>
+        <strong style="color:var(--green-ink);">F% = 76 ± 6%</strong><br>
+        <span class="pencil">Found at iteration 31</span>
+      </div>
+    </div>
+
+    <div class="alert">
+      Random search of 40 out of 800 compounds has only 5% chance of catching the true top-3. BO's GP learned that low TPSA + low HBD drove F% and focused there → found top-3 with near certainty.
+    </div>
+
+  </div>
+  <div class="page-num">3</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     PAGE 4 — Multi-Objective BO: Bioreactor PT Example
+═══════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="corner-fold"></div>
+  <div class="page-content">
+
+    <h2>7. Multi-Objective BO (Pareto Optimization)</h2>
+
+    <p>Real problems rarely have a single objective. Often you need to balance <span class="hl-y">two or more conflicting goals simultaneously</span> — improving one usually hurts another. The solution is to find the <strong>Pareto front</strong>: the set of points where you can't improve any objective without making at least one other worse.</p>
+
+    <div class="diagram-area">
+      <svg class="pareto-svg" viewBox="0 0 420 260" width="420" height="260" xmlns="http://www.w3.org/2000/svg">
+        <!-- axes -->
+        <line x1="50" y1="220" x2="390" y2="220" stroke="#555" stroke-width="1.5"/>
+        <line x1="50" y1="220" x2="50" y2="20" stroke="#555" stroke-width="1.5"/>
+        <text x="200" y="250" font-family="Patrick Hand,cursive" font-size="13" fill="#333" text-anchor="middle">Objective 1 → Maximize Yield (g/L)</text>
+        <text x="20" y="130" font-family="Patrick Hand,cursive" font-size="13" fill="#333" text-anchor="middle" transform="rotate(-90,20,130)">Obj 2 → Minimize Cost ($)</text>
+        <!-- Pareto front curve -->
+        <path d="M 80 195 C 100 175, 140 150, 185 120 C 230 90, 280 70, 350 55"
+              fill="none" stroke="#1b3a6b" stroke-width="2.5" stroke-dasharray="6,3"/>
+        <!-- Pareto points -->
+        <circle cx="80"  cy="195" r="6" fill="#1b3a6b"/>
+        <circle cx="120" cy="165" r="6" fill="#1b3a6b"/>
+        <circle cx="165" cy="135" r="6" fill="#1b3a6b"/>
+        <circle cx="215" cy="105" r="6" fill="#1b3a6b"/>
+        <circle cx="270" cy="78"  r="6" fill="#1b3a6b"/>
+        <circle cx="335" cy="58"  r="6" fill="#1b3a6b"/>
+        <!-- Sub-optimal points -->
+        <circle cx="150" cy="175" r="5" fill="#ccc" stroke="#999" stroke-width="1"/>
+        <circle cx="200" cy="150" r="5" fill="#ccc" stroke="#999" stroke-width="1"/>
+        <circle cx="240" cy="130" r="5" fill="#ccc" stroke="#999" stroke-width="1"/>
+        <circle cx="180" cy="185" r="5" fill="#ccc" stroke="#999" stroke-width="1"/>
+        <circle cx="290" cy="120" r="5" fill="#ccc" stroke="#999" stroke-width="1"/>
+        <!-- Labels -->
+        <text x="85" y="185" font-family="Caveat,cursive" font-size="11" fill="#1b3a6b">A</text>
+        <text x="340" y="48"  font-family="Caveat,cursive" font-size="11" fill="#1b3a6b">F</text>
+        <text x="165" y="150" font-family="Caveat,cursive" font-size="11" fill="#999">dominated</text>
+        <!-- Arrow + label for Pareto -->
+        <text x="260" y="50" font-family="Patrick Hand,cursive" font-size="12" fill="#b5291c">← Pareto front</text>
+        <!-- "decision point" annotation -->
+        <circle cx="215" cy="105" r="9" fill="none" stroke="#b5291c" stroke-width="2"/>
+        <text x="222" y="96" font-family="Caveat,cursive" font-size="11" fill="#b5291c">your pick</text>
+      </svg>
+    </div>
+
+    <p><span class="pencil">Grey dots = dominated (there's a Pareto point that beats them on all objectives). Blue dots = non-dominated = the Pareto front. You choose your operating point on the front based on business priorities.</span></p>
+
+    <hr class="divider">
+
+    <h2>Applied Example #2 — Multi-Objective BO</h2>
+    <h3>Problem: Bioreactor (PT) — Maximize Yield, Minimize Impurity</h3>
+
+    <p class="pencil">Context: You're optimizing a fed-batch bioreactor for monoclonal antibody production. Each run takes 14 days and costs ~$15k in media + labor. You want to jointly: (1) maximize titer (g/L) and (2) minimize host-cell protein (HCP) impurity (ppm) — a key quality attribute. Budget: 30 runs.</p>
+
+    <h4>Design variables</h4>
+    <table>
+      <tr><th>Parameter</th><th>Range</th><th>Role</th></tr>
+      <tr><td>Temperature shift point (day)</td><td>Day 3–7</td><td>Controls growth vs production phase</td></tr>
+      <tr><td>pH setpoint</td><td>6.8–7.4</td><td>Enzyme activity, cell viability</td></tr>
+      <tr><td>Glucose feed rate (g/L/day)</td><td>1.0–4.0</td><td>Energy source; excess → overflow metabolism</td></tr>
+      <tr><td>Dissolved O₂ setpoint (%)</td><td>20–60%</td><td>Oxidative stress vs growth</td></tr>
+    </table>
+
+    <h4>Algorithm: qNEHVI (q-Noisy Expected Hypervolume Improvement)</h4>
+
+    <div class="callout">
+      <strong>Hypervolume improvement</strong> = how much does adding a new Pareto point expand the volume of space dominated by the current Pareto set? qNEHVI maximizes this expected expansion, accounting for noise in observations.
+    </div>
+
+    <span class="formula">α_qNEHVI(x) = E[ HV(Pareto set ∪ {f(x)}) − HV(Pareto set) ]</span>
+
+    <h4>Why qNEHVI over alternatives?</h4>
+    <ul>
+      <li><strong>scalarization (weighted sum)</strong> — only finds convex Pareto points; misses concave regions</li>
+      <li><strong>ε-constraint</strong> — converts to single-obj; requires you to pick ε upfront</li>
+      <li><span class="hl-g"><strong>qNEHVI</strong> — finds the whole Pareto front, handles noise, supports batch queries</span></li>
+    </ul>
+
+    <h4>What the loop looks like in code (pseudocode)</h4>
+    <div class="diagram-area" style="font-family:'Caveat',cursive; font-size:13.5px; line-height:26px; color:var(--blue-ink);">
+      <pre>
+# Initialize
+X = sobol_sample(n=8)   # 8 initial bioreactor runs
+Y = run_bioreactor(X)   # Y has shape (8, 2): [titer, -HCP]
+                        # note: negate HCP to convert to maximization
+
+# BO loop
+for step in range(22):
+    model = MultiTaskGP(X, Y)           # one GP per objective
+    fit_gpytorch_mll(mll)
+
+    ref_point = Y.min(dim=0).values - 0.1   # reference point below all obs
+    acqf = qNEHVI(model, ref_point=ref_point, sampler=SobolSampler(128))
+
+    x_next = optimize_acqf(acqf, bounds, q=1)   # suggest 1 run
+    y_next = run_bioreactor(x_next)
+    X, Y = append(X, x_next), append(Y, y_next)
+
+pareto_mask = is_non_dominated(Y)
+pareto_front = Y[pareto_mask]
+</pre>
+    </div>
+
+  </div>
+  <div class="page-num">4</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     PAGE 5 — DoE vs BO + Practical Workflow + Tips
+═══════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="corner-fold"></div>
+  <div class="page-content">
+
+    <h2>8. Classical DoE vs Bayesian Optimization</h2>
+
+    <table>
+      <tr><th>Property</th><th>Classical DoE (RSM/CCD)</th><th>Bayesian Optimization</th></tr>
+      <tr><td><strong>Model type</strong></td><td>Polynomial (quadratic max)</td><td>Nonparametric GP — any shape</td></tr>
+      <tr><td><strong>Design</strong></td><td>Fixed upfront; cannot adapt</td><td>Sequential; adapts with each result</td></tr>
+      <tr><td><strong>Handles nonlinearity</strong></td><td>Poorly (limited to x², x·x')</td><td>Yes — GP captures arbitrary shapes</td></tr>
+      <tr><td><strong>Sample efficiency</strong></td><td>Good for 2–4 factors</td><td>Better for 4+ factors, nonlinear responses</td></tr>
+      <tr><td><strong>Uncertainty</strong></td><td>No posterior uncertainty</td><td>Full posterior uncertainty on predictions</td></tr>
+      <tr><td><strong>Multi-objective</strong></td><td>Desirability functions (ad hoc)</td><td>Pareto front via qNEHVI (principled)</td></tr>
+      <tr><td><strong>Constraints</strong></td><td>Limited (linear only)</td><td>Nonlinear constraints supported</td></tr>
+      <tr><td><strong>Interpretability</strong></td><td>Explicit model coefficients</td><td>Less interpretable; SHAP can help</td></tr>
+      <tr><td><strong>Cold-start need</strong></td><td>No</td><td>Requires n_init points (5–15)</td></tr>
+    </table>
+
+    <div class="insight">
+      ★ Rule of thumb: if you have &lt; 3 factors and a roughly quadratic response → use CCD/RSM. For 4+ factors, nonlinear responses, or tight budgets → BO will significantly outperform.
+    </div>
+
+    <h4>Sample efficiency comparison (PK example, 800-compound database)</h4>
+    <div class="compare-bar">
+      <div class="bar-label">Bayesian Opt</div>
+      <div class="bar-track"><div class="bar-fill" style="width:90%; background:var(--green-ink);">40 runs → top 3 found</div></div>
+    </div>
+    <div class="compare-bar">
+      <div class="bar-label">Random Search</div>
+      <div class="bar-track"><div class="bar-fill" style="width:55%; background:#e6922a;">~120 runs needed</div></div>
+    </div>
+    <div class="compare-bar">
+      <div class="bar-label">Grid Search</div>
+      <div class="bar-track"><div class="bar-fill" style="width:35%; background:#b5291c;">~200 runs needed</div></div>
+    </div>
+    <div class="compare-bar">
+      <div class="bar-label">RSM (quadratic)</div>
+      <div class="bar-track"><div class="bar-fill" style="width:50%; background:#7a7a9a;">misses nonlinear</div></div>
+    </div>
+
+    <hr class="divider">
+
+    <h2>9. Practical Workflow — How to Apply BO to a New Problem</h2>
+
+    <ol>
+      <li><strong>Define your design space</strong> — list all input variables (continuous / categorical), their ranges, and any hard constraints (mass balance, safety limits, feasibility)</li>
+      <li><strong>Define objective(s)</strong> — single target (maximize/minimize) or multiple (Pareto). Make sure every objective is measurable with a consistent noise model</li>
+      <li><strong>Choose your budget</strong> — how many evaluations can you afford? Rule of thumb: n_init ≈ 2× dimensionality; remaining budget goes to BO steps</li>
+      <li><strong>Initialize with Sobol</strong> — not random. This spreads points well and reduces GP cold-start bias</li>
+      <li><strong>Fit GP + optimize acquisition</strong> — SingleTaskGP + LogEI for single-obj; MultiTaskGP + qNEHVI for multi-obj</li>
+      <li><strong>Run the experiment</strong> — get the real observation. Add noise estimate if possible (duplicate experiments help)</li>
+      <li><strong>Monitor convergence</strong> — plot best-so-far vs iteration. Flat curve = converged or budget exhausted</li>
+      <li><strong>Inspect the GP posterior</strong> — check uncertainty maps to see where the model is still unsure</li>
+      <li><strong>Report top candidates</strong> — include GP predicted mean ± CI, not just the point estimate</li>
+    </ol>
+
+    <hr class="divider">
+
+    <h2>10. Common Pitfalls</h2>
+    <ul>
+      <li><span class="hl-y">Too few init points</span> — GP starts with a poorly conditioned prior; misleads acquisition function early on</li>
+      <li><span class="hl-y">Ignoring noise</span> — if your experiment has variability (σ > 0), use the noisy GP variant (add noise to likelihood)</li>
+      <li><span class="hl-y">Wrong kernel</span> — RBF is too smooth for most real responses; use Matérn 5/2 as default</li>
+      <li><span class="hl-y">Unnormalized inputs</span> — GP is sensitive to scale; always normalize inputs to [0,1] (BoTorch's <code>Normalize</code> does this)</li>
+      <li><span class="hl-y">Unnormalized outputs</span> — standardize outputs to zero mean / unit variance (<code>Standardize</code> in BoTorch)</li>
+      <li><span class="hl-y">Batch vs sequential</span> — if you can run experiments in parallel, use <code>qLogEI</code> (batch acquisition) instead of single-point EI</li>
+      <li><span class="hl-y">Multi-objective: bad reference point</span> — set ref_point just below the worst observed values, not at zero. Wrong ref point distorts Pareto volume computation</li>
+    </ul>
+
+    <div class="sticky" style="max-width:240px; transform:rotate(-1.2deg);">
+      Quick library cheatsheet:<br>
+      • Single-obj → <em>SingleTaskGP + LogEI</em><br>
+      • Multi-obj → <em>SingleTaskGP × n_obj + qNEHVI</em><br>
+      • Batch → <em>qLogEI / qNEHVI with q>1</em><br>
+      • All via <strong>BoTorch</strong>
+    </div>
+
+    <p class="clearfix pencil" style="margin-top:16px;">References: Shahriari et al. (2016) "Taking the Human Out of the Loop"; Garnett (2023) "Bayesian Optimization"; BoTorch docs (botorch.org)</p>
+
+  </div>
+  <div class="page-num">5</div>
+</div>
+
+</div><!-- .notebook -->
+</body>
+</html>
