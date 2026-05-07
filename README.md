@@ -12,6 +12,7 @@ This project answers one core question:
 
 <video src="bo_explainer.mp4" controls width="960"></video>
 
+![Full Video]("bo_explainer.mp4")
 
 ## What is Q45?
 `Q45` is the **percentage of drug dissolved at 45 minutes** (0-100%).  
